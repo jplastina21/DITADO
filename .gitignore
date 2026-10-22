@@ -1,0 +1,8 @@
+venv/
+modelos/
+__pycache__/
+*.log
+*.log.*
+*.wav
+*.ogg
+ditado.ico

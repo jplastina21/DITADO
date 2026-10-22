@@ -1,0 +1,10 @@
+faster-whisper>=1.1.0
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*
+sounddevice
+numpy
+pynput
+pystray
+Pillow
+pywin32
+tomli

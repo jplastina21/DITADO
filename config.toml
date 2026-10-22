@@ -1,0 +1,37 @@
+# Configuracao do Ditado. Depois de mudar, feche o Ditado (icone na bandeja > Sair) e abra de novo.
+
+[atalho]
+# Tecla que voce SEGURA para falar. Nomes do pynput: "ctrl_r" (Ctrl direito), "alt_r" (AltGr),
+# "f13" ... "f24", "pause", "scroll_lock", "menu" etc.
+# O Wispr usa Ctrl+Win / Fn: nao coloque essas aqui enquanto ele estiver instalado.
+tecla = "ctrl_r"
+
+[audio]
+bipe = true                     # bipe curto ao comecar e ao terminar
+volume_bipe = 0.25              # 0.0 a 1.0
+minimo_s = 0.4                  # fala mais curta que isso e descartada (toque sem querer)
+microfone_sempre_aberto = true  # true = comeca a gravar sem atraso; false = abre o mic so ao apertar
+pre_roll_s = 0.2                # guarda esse tanto de audio de ANTES de apertar (nao come a 1a silaba)
+dispositivo = ""                # vazio = microfone padrao do Windows; ou parte do nome do aparelho
+
+[transcricao]
+modelo = "large-v3-turbo"       # outros: "large-v3", "medium", "small"
+modelo_fallback = "medium"      # usado se o principal nao carregar
+dispositivo = "cuda"            # "cuda" (placa de video) ou "cpu"
+idioma = "pt"
+vad = true                      # corta silencio antes de transcrever
+beam_size = 5
+pasta_modelos = ""              # vazio = D:\Claudinho\ditado\modelos (pasta do programa)
+prompt_inicial = "Ditado em português do Brasil, com pontuação. "
+vocabulario = [
+  "urologia", "próstata", "PSA", "vasectomia", "testosterona", "hipogonadismo",
+  "Da Vinci", "cirurgia robótica", "Instagram", "reel", "PPE", "Maringá",
+]
+
+[colagem]
+espaco_no_fim = true            # poe um espaco depois do texto colado
+espera_restaurar_s = 0.4        # espera antes de devolver o que estava no clipboard
+
+[substituicoes]
+# Palavra que o Whisper erra sempre do mesmo jeito -> como deve sair (maiuscula/minuscula nao importa).
+"Rio do Instagram" = "reel do Instagram"
