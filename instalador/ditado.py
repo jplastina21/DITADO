@@ -42,7 +42,7 @@ else:
     DADOS = Path(os.environ.get("APPDATA") or Path.home()) / "Ditado"              # config + log
     LOCAL = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Ditado"         # modelos + CUDA (pesado)
 CONFIG_PADRAO = DADOS / "config.toml"
-CONFIG_MODELO = PASTA / "config.padrao.toml"   # copiado para CONFIG_PADRAO na primeira execucao
+CONFIG_MODELO = Path(getattr(sys, "_MEIPASS", PASTA)) / "config.padrao.toml"  # PyInstaller 6: dados ficam em _internal   # copiado para CONFIG_PADRAO na primeira execucao
 LOG_PATH = DADOS / "ditado.log"
 MODELOS = LOCAL / "modelos"
 CUDA_DIR = LOCAL / "cuda"
@@ -70,14 +70,28 @@ def garantir_config(caminho: Path) -> None:
         caminho.write_text('[atalho]\ntecla = "ctrl_r"\n', encoding="utf-8")
 
 
+def salvar_tecla(valor: str, caminho: Path = None) -> None:
+    """Troca so a linha `tecla = ...` da config, preservando comentarios e o resto."""
+    caminho = caminho or CONFIG_PADRAO
+    garantir_config(caminho)
+    linhas = caminho.read_text(encoding="utf-8-sig").splitlines(keepends=True)
+    for i, l in enumerate(linhas):
+        if re.match(r"\s*tecla\s*=", l):
+            linhas[i] = f'tecla = "{valor}"\n'
+            break
+    else:
+        linhas.append(f'\n[atalho]\ntecla = "{valor}"\n')
+    caminho.write_text("".join(linhas), encoding="utf-8")
+
+
 def carregar_config(caminho: Path = CONFIG_PADRAO) -> dict:
     garantir_config(caminho)
     try:
         import tomllib  # Python 3.11+
     except ModuleNotFoundError:  # Python 3.10
         import tomli as tomllib
-    with open(caminho, "rb") as f:
-        cfg = tomllib.load(f)
+    # utf-8-sig: aceita config salva com BOM (Bloco de Notas, instalador)
+    cfg = tomllib.loads(Path(caminho).read_text(encoding="utf-8-sig"))
     cfg.setdefault("atalho", {}).setdefault("tecla", "ctrl_r")
     cfg.setdefault("audio", {})
     cfg.setdefault("transcricao", {})
@@ -785,6 +799,24 @@ class Ditado:
         def abrir_config(_icon, _item):
             abrir(CONFIG_PADRAO)
 
+        def escolher_tecla(valor):
+            def f(_icon, _item):
+                self.tecla_nome = valor  # vale na hora: _eh_tecla le este campo
+                try:
+                    salvar_tecla(valor)
+                    log.info("tecla trocada pelo menu: %s", valor)
+                except Exception as e:  # noqa: BLE001
+                    log.error("nao consegui salvar a tecla na config: %s", e)
+                    self.notificar("A tecla mudou agora, mas não consegui salvar na configuração.")
+                try:
+                    self.icone.update_menu()
+                except Exception:  # noqa: BLE001
+                    pass
+            return f
+
+        def e_tecla(valor):
+            return lambda _item: self.tecla_nome == valor
+
         def tentar_de_novo(_icon, _item):
             if self.estado == "erro":
                 self.mudar_estado("carregando")
@@ -797,7 +829,8 @@ class Ditado:
 
         menu = pystray.Menu(
             pystray.MenuItem(lambda _i: f"Status: {self.estado}", None, enabled=False),
-            pystray.MenuItem(lambda _i: f"Segure: {self.tecla_nome}", None, enabled=False),
+            pystray.MenuItem("Tecla: Ctrl esquerdo", escolher_tecla("ctrl_l"), checked=e_tecla("ctrl_l"), radio=True),
+            pystray.MenuItem("Tecla: Ctrl direito", escolher_tecla("ctrl_r"), checked=e_tecla("ctrl_r"), radio=True),
             pystray.MenuItem("Tentar de novo (se deu erro)", tentar_de_novo, visible=lambda _i: self.estado == "erro"),
             pystray.MenuItem("Abrir configuração (tecla, modelo...)", abrir_config),
             pystray.MenuItem("Abrir log", abrir_log),
