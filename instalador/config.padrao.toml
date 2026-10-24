@@ -1,0 +1,43 @@
+# Configuracao do Ditado.
+# Este arquivo fica em %APPDATA%\Ditado\config.toml. Depois de mudar, feche o Ditado
+# (icone na bandeja > Sair) e abra de novo.
+
+[atalho]
+# Tecla que voce SEGURA para falar. Nomes: "ctrl_r" (Ctrl direito), "ctrl_l" (Ctrl esquerdo),
+# "alt_r" (AltGr), "f13" ... "f24", "pause", "scroll_lock", "menu" etc.
+tecla = "ctrl_r"
+
+[audio]
+bipe = true                     # bipe curto ao comecar e ao terminar
+volume_bipe = 0.25              # 0.0 a 1.0
+minimo_s = 0.4                  # fala mais curta que isso e descartada (toque sem querer)
+microfone_sempre_aberto = true  # true = comeca a gravar sem atraso; false = abre o mic so ao apertar
+pre_roll_s = 0.2                # guarda esse tanto de audio de ANTES de apertar (nao come a 1a silaba)
+dispositivo = ""                # vazio = microfone padrao do Windows; ou parte do nome do aparelho
+
+[transcricao]
+# "auto" = usa a placa de video NVIDIA se houver (baixa as bibliotecas dela uma vez, ~1 GB);
+# senao usa o processador. "cpu" forca o processador; "cuda" forca a placa NVIDIA.
+dispositivo = "auto"
+modelo_gpu = "large-v3-turbo"   # modelo usado na placa NVIDIA (~1,6 GB, baixado na 1a vez)
+modelo_cpu = "small"            # modelo usado no processador. "medium" erra menos e e bem mais lento
+idioma = "pt"
+vad = true                      # corta silencio antes de transcrever
+beam_size = 5                   # 1 = um pouco mais rapido na CPU, 5 = mais preciso
+cpu_threads = 0                 # 0 = automatico
+baixar_cuda = true              # false = nunca baixa as bibliotecas da placa (fica sempre no processador)
+pasta_modelos = ""              # vazio = %LOCALAPPDATA%\Ditado\modelos
+prompt_inicial = "Ditado em português do Brasil, com pontuação. "
+# Palavras que voce usa muito e o Whisper costuma errar (nomes, termos tecnicos). Tire o # e edite:
+vocabulario = [
+  # "Maria Souza", "Clínica Exemplo", "hipertensão", "Instagram",
+]
+
+[colagem]
+espaco_no_fim = true            # poe um espaco depois do texto colado
+espera_restaurar_s = 0.4        # espera antes de devolver o que estava na area de transferencia
+
+[substituicoes]
+# Palavra que o Whisper erra sempre do mesmo jeito -> como deve sair (maiuscula/minuscula nao importa).
+# Exemplo (tire o # para usar):
+# "rio do Instagram" = "reel do Instagram"

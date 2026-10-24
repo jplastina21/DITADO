@@ -1,0 +1,9 @@
+faster-whisper>=1.1.0
+sounddevice
+numpy
+pynput
+pystray
+Pillow
+pywin32
+tomli
+pyinstaller

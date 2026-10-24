@@ -6,3 +6,8 @@ __pycache__/
 *.wav
 *.ogg
 ditado.ico
+!instalador/ditado.ico
+instalador/bvenv/
+instalador/build/
+instalador/dist/
+instalador/Output/
