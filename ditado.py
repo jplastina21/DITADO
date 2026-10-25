@@ -1,5 +1,10 @@
 """Ditado: segure a tecla, fale, solte. O texto cai onde o cursor estiver.
 
+Dois jeitos de ditar:
+  - SEGURAR (padrao Ctrl esquerdo): segura, fala, solta. Outra tecla junto cancela (era atalho, tipo Ctrl+C).
+  - ALTERNAR (padrao Win+J): aperta uma vez pra comecar, aperta de novo pra parar. Pra fala longa.
+    Outras teclas nao cancelam; o audio vai sendo gravado na pasta gravacoes (wav) enquanto voce fala.
+
 Transcricao local na GPU (faster-whisper). Nada de voz sai do PC.
 
 Uso:
@@ -14,6 +19,7 @@ import logging
 import logging.handlers
 import math
 import os
+import queue
 import re
 import struct
 import sys
@@ -25,6 +31,7 @@ from pathlib import Path
 PASTA = Path(__file__).resolve().parent
 CONFIG_PADRAO = PASTA / "config.toml"
 LOG_PATH = PASTA / "ditado.log"
+GRAVACOES_PADRAO = PASTA / "gravacoes"
 
 log = logging.getLogger("ditado")
 
@@ -42,6 +49,7 @@ def carregar_config(caminho: Path = CONFIG_PADRAO) -> dict:
     cfg.setdefault("audio", {})
     cfg.setdefault("transcricao", {})
     cfg.setdefault("colagem", {})
+    cfg.setdefault("alternar", {})
     return cfg
 
 
@@ -287,6 +295,133 @@ def colar(texto: str, clipboard, enviar=enviar_ctrl_v, espera_restaurar: float =
         clipboard.restaurar(guardado)
 
 
+# --------------------------------------------------------------------------- atalho global (modo alternar)
+
+_MODS = {"win": 0x0008, "ctrl": 0x0002, "alt": 0x0001, "shift": 0x0004}
+_MOD_NOREPEAT = 0x4000  # segurar o atalho nao dispara de novo
+_VK_NOMES = {
+    "insert": 0x2D, "delete": 0x2E, "home": 0x24, "end": 0x23, "pageup": 0x21, "pagedown": 0x22,
+    "pause": 0x13, "scroll_lock": 0x91, "space": 0x20, "`": 0xC0, "'": 0xDE, ";": 0xBA,
+    ",": 0xBC, ".": 0xBE, "/": 0xBF, "-": 0xBD, "=": 0xBB, "[": 0xDB, "]": 0xDD, "\\": 0xDC,
+}
+_VK_MODIFICADORES = {"win": (0x5B, 0x5C), "ctrl": (0x11,), "alt": (0x12,), "shift": (0x10,)}
+
+
+def ler_atalho(texto: str) -> tuple[int, int, list[str]]:
+    """'win+j' -> (modificadores do RegisterHotKey, codigo virtual da tecla, nomes dos modificadores)."""
+    partes = [p.strip().lower() for p in texto.replace(" ", "").split("+") if p.strip()]
+    if len(partes) < 2:
+        raise ValueError(f"atalho {texto!r}: use modificador + tecla, ex. 'win+j'")
+    *mods, tecla = partes
+    m = 0
+    for x in mods:
+        if x not in _MODS:
+            raise ValueError(f"atalho {texto!r}: modificador {x!r} desconhecido (win, ctrl, alt, shift)")
+        m |= _MODS[x]
+    if len(tecla) == 1 and (tecla.isalpha() or tecla.isdigit()):
+        vk = ord(tecla.upper())
+    elif re.fullmatch(r"f([1-9]|1\d|2[0-4])", tecla):
+        vk = 0x70 + int(tecla[1:]) - 1
+    elif tecla in _VK_NOMES:
+        vk = _VK_NOMES[tecla]
+    else:
+        raise ValueError(f"atalho {texto!r}: tecla {tecla!r} desconhecida")
+    return m, vk, mods
+
+
+def nome_bonito(texto: str) -> str:
+    return "+".join(p.strip().capitalize() if len(p.strip()) > 1 else p.strip().upper()
+                    for p in texto.split("+") if p.strip())
+
+
+class AtalhoGlobal:
+    """Atalho do Windows (RegisterHotKey). Se outro programa ou o proprio Windows ja usa a combinacao,
+    o registro FALHA (erro 1409) - e assim que se sabe que nao vai colidir. Enquanto registrado, o
+    Windows entrega a combinacao so pra nos (nao chega no app em foco)."""
+
+    WM_HOTKEY = 0x0312
+    WM_QUIT = 0x0012
+
+    def __init__(self, texto: str, ao_disparar):
+        self.texto = texto
+        self.mods, self.vk, self.nomes_mods = ler_atalho(texto)
+        self.ao_disparar = ao_disparar
+        self.ok = False
+        self.erro = ""
+        self._tid = None
+        self._pronto = threading.Event()
+        self._t = None
+
+    def iniciar(self, espera: float = 5.0) -> bool:
+        self._t = threading.Thread(target=self._loop, name="atalho-alternar", daemon=True)
+        self._t.start()
+        self._pronto.wait(espera)
+        return self.ok
+
+    def _loop(self):
+        import ctypes
+        from ctypes import wintypes
+        u = ctypes.WinDLL("user32", use_last_error=True)
+        k = ctypes.WinDLL("kernel32")
+        self._tid = k.GetCurrentThreadId()
+        if not u.RegisterHotKey(None, 1, self.mods | _MOD_NOREPEAT, self.vk):
+            err = ctypes.get_last_error()
+            self.erro = (f"{nome_bonito(self.texto)} ja e usado por outro programa/Windows (erro 1409)"
+                         if err == 1409 else f"RegisterHotKey falhou (erro {err})")
+            self._pronto.set()
+            return
+        self.ok = True
+        self._pronto.set()
+        msg = wintypes.MSG()
+        try:
+            while u.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                if msg.message == self.WM_HOTKEY and msg.wParam == 1:
+                    threading.Thread(target=self._disparar, daemon=True).start()
+        finally:
+            u.UnregisterHotKey(None, 1)
+
+    def _disparar(self):
+        try:
+            self.ao_disparar()
+        except Exception as e:  # noqa: BLE001
+            log.exception("erro no atalho alternar: %s", e)
+
+    def parar(self):
+        if self._tid:
+            import ctypes
+            ctypes.windll.user32.PostThreadMessageW(self._tid, self.WM_QUIT, 0, 0)
+
+    def esperar_soltar(self, limite: float = 5.0) -> bool:
+        """Espera o usuario soltar Win/Ctrl/... do atalho antes do Ctrl+V. Win ainda apertado + Ctrl+V
+        viraria Ctrl+Win (o atalho do Wispr) ou Win+Ctrl+V (som do Windows)."""
+        if os.name != "nt":
+            return True
+        import ctypes
+        gks = ctypes.windll.user32.GetAsyncKeyState
+        vks = [v for n in self.nomes_mods for v in _VK_MODIFICADORES[n]] + [self.vk]
+        fim = time.monotonic() + limite
+        while time.monotonic() < fim:
+            if not any(gks(v) & 0x8000 for v in vks):
+                return True
+            time.sleep(0.03)
+        return False
+
+
+def limpar_gravacoes(pasta: Path, guardar: int) -> list[Path]:
+    """Deixa so as `guardar` gravacoes mais novas (wav + txt com o mesmo nome). Devolve o que apagou."""
+    wavs = sorted(Path(pasta).glob("*.wav"), key=lambda p: p.name, reverse=True)
+    apagados = []
+    for w in wavs[max(guardar, 1):]:
+        for p in (w, w.with_suffix(".txt")):
+            try:
+                if p.exists():
+                    p.unlink()
+                    apagados.append(p)
+            except OSError as e:
+                log.warning("nao consegui apagar %s: %s", p, e)
+    return apagados
+
+
 # --------------------------------------------------------------------------- som / gravacao
 
 def _wav_bipe(freq: float, dur: float, volume: float) -> bytes:
@@ -312,14 +447,63 @@ class Bipe:
         vol = float(a.get("volume_bipe", 0.25))
         self.ini = _wav_bipe(880, 0.07, vol)
         self.fim = _wav_bipe(587, 0.07, vol)
+        self.nao = _wav_bipe(330, 0.15, vol)       # atalho ignorado (ocupado)
+        self.teto = _wav_bipe(440, 0.35, vol)      # parou sozinho no teto de tempo
 
     def tocar(self, qual: str) -> None:
         if not self.ligado or os.name != "nt":
             return
         import winsound
-        dados = self.ini if qual == "ini" else self.fim
+        dados = {"ini": self.ini, "fim": self.fim, "nao": self.nao, "teto": self.teto}.get(qual, self.fim)
         # SND_MEMORY nao aceita SND_ASYNC: toca numa thread pra nao travar a gravacao
         threading.Thread(target=winsound.PlaySound, args=(dados, winsound.SND_MEMORY), daemon=True).start()
+
+
+class EscritorWav:
+    """Grava blocos float32 num wav 16 kHz mono int16 DURANTE a gravacao (thread propria).
+
+    O cabecalho e corrigido e o arquivo descarregado no disco a cada bloco: se o programa travar
+    ou o PC desligar no meio, o que ja foi falado fica num wav valido.
+    """
+
+    def __init__(self, caminho: Path, sr: int = 16000):
+        self.caminho = Path(caminho)
+        self.caminho.parent.mkdir(parents=True, exist_ok=True)
+        self._f = open(self.caminho, "wb")  # noqa: SIM115
+        self._w = wave.open(self._f, "wb")
+        self._w.setnchannels(1)
+        self._w.setsampwidth(2)
+        self._w.setframerate(sr)
+        self._fila: queue.Queue = queue.Queue()
+        self.erro = None
+        self._t = threading.Thread(target=self._loop, name="escritor-wav", daemon=True)
+        self._t.start()
+
+    def escrever(self, bloco) -> None:  # chamado do callback do microfone: so enfileira
+        self._fila.put(bloco)
+
+    def _loop(self):
+        import numpy as np
+        while True:
+            b = self._fila.get()
+            if b is None:
+                break
+            if self.erro is not None:
+                continue
+            try:
+                self._w.writeframes((np.clip(b, -1.0, 1.0) * 32767).astype("<i2").tobytes())
+                self._f.flush()
+            except Exception as e:  # noqa: BLE001
+                self.erro = e
+                log.error("falhou gravar %s: %s", self.caminho, e)
+
+    def fechar(self) -> None:
+        self._fila.put(None)
+        self._t.join(timeout=10)
+        try:
+            self._w.close()
+        finally:
+            self._f.close()
 
 
 class Gravador:
@@ -337,6 +521,7 @@ class Gravador:
         self._blocos: list = []
         self._anel: list = []
         self._stream = None
+        self._escritor: EscritorWav | None = None
         if self.sempre_aberto:
             self._abrir()
 
@@ -345,6 +530,8 @@ class Gravador:
         with self._lock:
             if self._gravando:
                 self._blocos.append(bloco)
+                if self._escritor is not None:
+                    self._escritor.escrever(bloco)
             else:
                 self._anel.append(bloco)
                 total = sum(len(b) for b in self._anel)
@@ -368,7 +555,8 @@ class Gravador:
             finally:
                 self._stream = None
 
-    def comecar(self):
+    def comecar(self, arquivo: Path | None = None):
+        """arquivo: se vier, o audio tambem vai sendo escrito nesse wav enquanto grava (modo alternar)."""
         try:
             if self._stream is None or not self._stream.active:
                 self._stream = None
@@ -376,9 +564,14 @@ class Gravador:
         except Exception as e:  # noqa: BLE001
             log.error("microfone falhou: %s", e)
             raise
+        escritor = EscritorWav(arquivo, self.SR) if arquivo is not None else None
         with self._lock:
             self._blocos = list(self._anel)
             self._anel = []
+            self._escritor = escritor
+            if escritor is not None:
+                for b in self._blocos:  # o pre-roll tambem vai pro arquivo
+                    escritor.escrever(b)
             self._gravando = True
 
     def parar(self):
@@ -386,6 +579,9 @@ class Gravador:
         with self._lock:
             self._gravando = False
             blocos, self._blocos = self._blocos, []
+            escritor, self._escritor = self._escritor, None
+        if escritor is not None:
+            escritor.fechar()
         if not self.sempre_aberto:
             self._fechar()
         if not blocos:
@@ -413,6 +609,20 @@ class Ditado:
         self.t_inicio = 0.0
         self.icone = None
         self._fila = threading.Semaphore(1)
+        # modo alternar (fala longa)
+        alt = cfg["alternar"]
+        self.atalho_alt_txt = str(alt.get("atalho", "win+j")).strip()
+        self.teto_s = float(alt.get("teto_min", 30)) * 60
+        self.guardar = int(alt.get("guardar_ultimas", 20))
+        self.pasta_grav = Path(alt.get("pasta_gravacoes") or GRAVACOES_PADRAO)
+        self.atalho_alt: AtalhoGlobal | None = None
+        self.atalho_alt_erro = ""
+        self.alternando = False
+        self.arquivo_alt: Path | None = None
+        self.t_inicio_alt = 0.0
+        self._sessao_alt = 0
+        self._lock_alt = threading.Lock()
+        self.intervalo_vigia = 1.0
 
     # --- bandeja
     def _imagem(self, cor):
@@ -426,7 +636,7 @@ class Ditado:
         return im
 
     CORES = {"carregando": "#888888", "pronto": "#1f8f3a", "gravando": "#d02020",
-             "transcrevendo": "#d08000", "erro": "#5a005a"}
+             "transcrevendo": "#d08000", "erro": "#5a005a", "gravando (alternar)": "#c0007a"}
 
     def mudar_estado(self, estado: str, detalhe: str = ""):
         self.estado = estado
@@ -503,6 +713,164 @@ class Ditado:
                 if self.estado != "erro":
                     self.mudar_estado("pronto")
 
+    # --- modo alternar (Win+J): aperta = comeca, aperta de novo = para. Outras teclas nao cancelam.
+    def alternar(self):
+        with self._lock_alt:
+            if self.alternando:
+                self._parar_alternar("atalho")
+            elif self.estado == "pronto" and not self.gravando:
+                self._comecar_alternar()
+            else:
+                log.info("atalho alternar ignorado (estado: %s)", self.estado)
+                self.bipe.tocar("nao")
+
+    def _comecar_alternar(self):
+        self.pasta_grav.mkdir(parents=True, exist_ok=True)
+        arq = self.pasta_grav / (time.strftime("%Y-%m-%d_%H%M%S") + ".wav")
+        try:
+            self.gravador.comecar(arquivo=arq)
+        except Exception as e:  # noqa: BLE001
+            self.mudar_estado("erro", f"microfone: {e}")
+            return
+        self.alternando, self.arquivo_alt = True, arq
+        self.t_inicio_alt = time.perf_counter()
+        self._sessao_alt += 1
+        self.bipe.tocar("ini")
+        self.mudar_estado("gravando (alternar)", "0:00")
+        log.info("alternar: comecou a gravar em %s (teto %.0f min)", arq.name, self.teto_s / 60)
+        threading.Thread(target=self._vigia, args=(self._sessao_alt,), daemon=True).start()
+
+    def _vigia(self, sessao: int):
+        """Teto de tempo + relogio no icone."""
+        ultimo = -1
+        while True:
+            time.sleep(self.intervalo_vigia)
+            with self._lock_alt:
+                if not self.alternando or sessao != self._sessao_alt:
+                    return
+                dt = time.perf_counter() - self.t_inicio_alt
+                if dt >= self.teto_s:
+                    log.warning("alternar: chegou no teto de %.0f min, parando sozinho", self.teto_s / 60)
+                    self._parar_alternar("teto")
+                    return
+                seg = int(dt) // 5 * 5
+                if seg != ultimo:
+                    ultimo = seg
+                    self.mudar_estado("gravando (alternar)",
+                                      f"{seg // 60}:{seg % 60:02d} ({nome_bonito(self.atalho_alt_txt)} para)")
+
+    def _parar_alternar(self, motivo: str):
+        """Chamar com _lock_alt na mao."""
+        self.alternando = False
+        audio = self.gravador.parar()
+        arq, self.arquivo_alt = self.arquivo_alt, None
+        dur = len(audio) / Gravador.SR
+        self.bipe.tocar("teto" if motivo == "teto" else "fim")
+        log.info("alternar: parou (%s), %.1fs gravados em %s", motivo, dur, arq.name if arq else "?")
+        if dur < self.min_s:
+            log.info("alternar: descartado, curto demais (%.2fs)", dur)
+            try:
+                if arq:
+                    arq.unlink()
+            except OSError:
+                pass
+            self.mudar_estado("pronto")
+            return
+        self.mudar_estado("transcrevendo", f"{dur / 60:.1f} min de audio")
+        threading.Thread(target=self._processar_alternar, args=(audio, arq), daemon=True).start()
+
+    def _colar(self, texto: str) -> None:
+        colar(texto, self.clip, espera_restaurar=self.espera_restaurar)
+
+    def _processar_alternar(self, audio, arq: Path | None):
+        with self._fila:
+            self.mudar_estado("transcrevendo", f"{len(audio) / 16000 / 60:.1f} min de audio")
+            texto = ""
+            try:
+                t0 = time.perf_counter()
+                texto = self.motor.transcrever(audio)
+                log.info("alternar: transcrito %.1fs de audio em %.1fs (%d caracteres)",
+                         len(audio) / 16000, time.perf_counter() - t0, len(texto))
+                if arq is not None:
+                    arq.with_suffix(".txt").write_text(texto, encoding="utf-8")
+                if texto:
+                    if self.espaco_fim:
+                        texto += " "
+                    if self.atalho_alt is not None and not self.atalho_alt.esperar_soltar():
+                        log.warning("alternar: Win ainda apertado depois de 5s; colando mesmo assim")
+                    self.colando = True
+                    try:
+                        self._colar(texto)
+                    finally:
+                        self.colando = False
+            except Exception as e:  # noqa: BLE001
+                log.exception("alternar: erro ao transcrever/colar: %s (audio salvo em %s)", e, arq)
+                if texto:  # transcreveu mas nao colou: deixa no clipboard pra colar a mao
+                    try:
+                        self.clip.por_texto(texto)
+                        log.info("alternar: texto deixado no clipboard (Ctrl+V a mao)")
+                    except Exception:  # noqa: BLE001
+                        pass
+            finally:
+                try:
+                    limpar_gravacoes(self.pasta_grav, self.guardar)
+                except Exception as e:  # noqa: BLE001
+                    log.warning("limpeza das gravacoes falhou: %s", e)
+                if self.estado != "erro":
+                    self.mudar_estado("pronto")
+
+    def ultima_gravacao(self) -> Path | None:
+        wavs = sorted(self.pasta_grav.glob("*.wav"), key=lambda p: p.name)
+        return wavs[-1] if wavs else None
+
+    def retranscrever_ultima(self):
+        """Menu: transcreve de novo a ultima gravacao, salva o .txt, poe no clipboard e abre o .txt."""
+        arq = self.ultima_gravacao()
+        if arq is None or self.alternando:
+            log.info("retranscrever: %s", "gravando agora" if self.alternando else "nenhuma gravacao")
+            self.bipe.tocar("nao")
+            return None
+        with self._fila:
+            self.mudar_estado("transcrevendo", arq.name)
+            try:
+                audio = ler_wav_16k(str(arq))
+                t0 = time.perf_counter()
+                texto = self.motor.transcrever(audio)
+                txt = arq.with_suffix(".txt")
+                txt.write_text(texto, encoding="utf-8")
+                log.info("retranscrever: %s (%.1fs de audio) em %.1fs, %d caracteres",
+                         arq.name, len(audio) / 16000, time.perf_counter() - t0, len(texto))
+                if texto:
+                    self.clip.por_texto(texto)
+                if os.name == "nt" and getattr(self, "abrir_txt", True):
+                    os.startfile(str(txt))  # noqa: S606
+                return texto
+            except Exception as e:  # noqa: BLE001
+                log.exception("retranscrever falhou: %s", e)
+                return None
+            finally:
+                if self.estado != "erro":
+                    self.mudar_estado("pronto")
+
+    def registrar_alternar(self) -> bool:
+        if not self.atalho_alt_txt:
+            log.info("modo alternar desligado no config")
+            return False
+        try:
+            self.atalho_alt = AtalhoGlobal(self.atalho_alt_txt, self.alternar)
+        except ValueError as e:
+            self.atalho_alt_erro = str(e)
+            log.error("atalho alternar invalido: %s", e)
+            return False
+        if self.atalho_alt.iniciar():
+            log.info("atalho registrado: alternar '%s' (aperta = comeca, aperta de novo = para; teto %.0f min)",
+                     nome_bonito(self.atalho_alt_txt), self.teto_s / 60)
+            return True
+        self.atalho_alt_erro = self.atalho_alt.erro
+        log.error("atalho alternar NAO registrado: %s. Troque [alternar] atalho no config.toml", self.atalho_alt.erro)
+        self.atalho_alt = None
+        return False
+
     # --- ciclo de vida
     def _carregar(self):
         try:
@@ -522,18 +890,43 @@ class Ditado:
         listener = keyboard.Listener(on_press=self.ao_apertar, on_release=self.ao_soltar)
         listener.start()
         log.info("atalho registrado: segurar '%s'", self.tecla_nome)
+        self.registrar_alternar()
 
         def abrir_log(_icon, _item):
             os.startfile(str(LOG_PATH))  # noqa: S606
 
+        def abrir_gravacoes(_icon, _item):
+            self.pasta_grav.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(self.pasta_grav))  # noqa: S606
+
+        def retranscrever(_icon, _item):
+            threading.Thread(target=self.retranscrever_ultima, daemon=True).start()
+
         def sair(icon, _item):
             log.info("saindo pelo menu")
+            with self._lock_alt:
+                if self.alternando:  # nao perde a fala: fecha o wav direito antes de sair
+                    self.alternando = False
+                    self.gravador.parar()
+                    log.info("alternar: gravacao interrompida pelo Sair; o wav ficou em %s", self.pasta_grav)
+            if self.atalho_alt is not None:
+                self.atalho_alt.parar()
             listener.stop()
             icon.stop()
+
+        def texto_alternar(_i):
+            if self.atalho_alt is not None:
+                return f"Fala longa: {nome_bonito(self.atalho_alt_txt)} (aperta e aperta de novo)"
+            if self.atalho_alt_txt:
+                return f"Fala longa: {nome_bonito(self.atalho_alt_txt)} NAO registrou (veja o log)"
+            return "Fala longa: desligada"
 
         menu = pystray.Menu(
             pystray.MenuItem(lambda _i: f"Status: {self.estado}", None, enabled=False),
             pystray.MenuItem(lambda _i: f"Segure: {self.tecla_nome}", None, enabled=False),
+            pystray.MenuItem(texto_alternar, None, enabled=False),
+            pystray.MenuItem("Transcrever ultima gravacao de novo", retranscrever),
+            pystray.MenuItem("Abrir pasta de gravacoes", abrir_gravacoes),
             pystray.MenuItem("Abrir log", abrir_log),
             pystray.MenuItem("Sair", sair),
         )

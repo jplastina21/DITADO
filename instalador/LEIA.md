@@ -18,3 +18,6 @@ Se nao tem as bibliotecas CUDA ainda, comeca na CPU e troca para a GPU sozinho q
 
 `ditado.py` aqui e uma variante do `ditado.py` da raiz (que e a do PC do Juliano): mesma logica de teclado/colagem,
 caminhos e escolha de dispositivo diferentes.
+
+> Nota (24/10/2026): o modo **fala longa (Win+J)** existe só na versão da raiz do repo (a do PC
+> do Juliano). Esta versão do instalador ainda não tem; precisa portar e regerar o `Ditado-Setup.exe`.

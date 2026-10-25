@@ -14,6 +14,19 @@ microfone_sempre_aberto = true  # true = comeca a gravar sem atraso; false = abr
 pre_roll_s = 0.2                # guarda esse tanto de audio de ANTES de apertar (nao come a 1a silaba)
 dispositivo = ""                # vazio = microfone padrao do Windows; ou parte do nome do aparelho
 
+[alternar]
+# Fala LONGA: aperte o atalho uma vez pra comecar (bipe) e o MESMO atalho de novo pra parar (bipe).
+# Enquanto grava, pode digitar e usar o PC: outras teclas NAO cancelam. O texto cai onde o cursor
+# estiver na hora em que voce para.
+# Formato: modificador(es) + tecla, ex. "win+j", "win+f12", "win+shift+j". Vazio ("") desliga.
+# O programa registra no Windows: se a combinacao ja for de outro programa/do Windows, nao registra
+# e escreve o motivo no log. Win+J estava livre no Windows 11 do Juliano em 24/10/2026.
+# Evite: Win+H (ditado do Windows), Win+Alt+* (Game Bar), Win+Shift+S (recorte), Win+Ctrl (Wispr).
+atalho = "win+j"
+teto_min = 30                   # para sozinho (bipe longo) depois desse tanto de minutos
+guardar_ultimas = 20            # gravacoes (wav + txt) guardadas; as mais velhas sao apagadas
+pasta_gravacoes = ""            # vazio = D:\Claudinho\ditado\gravacoes (pasta do programa)
+
 [transcricao]
 modelo = "large-v3-turbo"       # outros: "large-v3", "medium", "small"
 modelo_fallback = "medium"      # usado se o principal nao carregar
