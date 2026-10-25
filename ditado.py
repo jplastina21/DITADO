@@ -2,7 +2,7 @@
 
 Dois jeitos de ditar:
   - SEGURAR (padrao Ctrl esquerdo): segura, fala, solta. Outra tecla junto cancela (era atalho, tipo Ctrl+C).
-  - ALTERNAR (padrao Win+J): aperta uma vez pra comecar, aperta de novo pra parar. Pra fala longa.
+  - ALTERNAR (padrao Win+\\, a tecla ao lado do Z no ABNT2): aperta uma vez pra comecar, aperta de novo pra parar. Pra fala longa.
     Outras teclas nao cancelam; o audio vai sendo gravado na pasta gravacoes (wav) enquanto voce fala.
 
 Transcricao local na GPU (faster-whisper). Nada de voz sai do PC.
@@ -302,6 +302,8 @@ _MOD_NOREPEAT = 0x4000  # segurar o atalho nao dispara de novo
 _VK_NOMES = {
     "insert": 0x2D, "delete": 0x2E, "home": 0x24, "end": 0x23, "pageup": 0x21, "pagedown": 0x22,
     "pause": 0x13, "scroll_lock": 0x91, "space": 0x20, "`": 0xC0, "'": 0xDE, ";": 0xBA,
+    "oem_102": 0xE2,  # ABNT2: tecla \ | ao lado do Z (esquerda)
+    "oem_3": 0xC0,    # ABNT2: tecla ' " a esquerda do 1
     ",": 0xBC, ".": 0xBE, "/": 0xBF, "-": 0xBD, "=": 0xBB, "[": 0xDB, "]": 0xDD, "\\": 0xDC,
 }
 _VK_MODIFICADORES = {"win": (0x5B, 0x5C), "ctrl": (0x11,), "alt": (0x12,), "shift": (0x10,)}
@@ -329,8 +331,12 @@ def ler_atalho(texto: str) -> tuple[int, int, list[str]]:
     return m, vk, mods
 
 
+_NOMES_TELA = {"oem_102": "\\ (ao lado do Z)", "oem_3": "' (esquerda do 1)"}
+
+
 def nome_bonito(texto: str) -> str:
-    return "+".join(p.strip().capitalize() if len(p.strip()) > 1 else p.strip().upper()
+    return "+".join(_NOMES_TELA.get(p.strip().lower()) or
+                    (p.strip().capitalize() if len(p.strip()) > 1 else p.strip().upper())
                     for p in texto.split("+") if p.strip())
 
 
@@ -611,7 +617,7 @@ class Ditado:
         self._fila = threading.Semaphore(1)
         # modo alternar (fala longa)
         alt = cfg["alternar"]
-        self.atalho_alt_txt = str(alt.get("atalho", "win+j")).strip()
+        self.atalho_alt_txt = str(alt.get("atalho", "win+oem_102")).strip()
         self.teto_s = float(alt.get("teto_min", 30)) * 60
         self.guardar = int(alt.get("guardar_ultimas", 20))
         self.pasta_grav = Path(alt.get("pasta_gravacoes") or GRAVACOES_PADRAO)
@@ -713,7 +719,7 @@ class Ditado:
                 if self.estado != "erro":
                     self.mudar_estado("pronto")
 
-    # --- modo alternar (Win+J): aperta = comeca, aperta de novo = para. Outras teclas nao cancelam.
+    # --- modo alternar (Win+\ ao lado do Z): aperta = comeca, aperta de novo = para. Outras teclas nao cancelam.
     def alternar(self):
         with self._lock_alt:
             if self.alternando:

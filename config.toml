@@ -18,11 +18,14 @@ dispositivo = ""                # vazio = microfone padrao do Windows; ou parte 
 # Fala LONGA: aperte o atalho uma vez pra comecar (bipe) e o MESMO atalho de novo pra parar (bipe).
 # Enquanto grava, pode digitar e usar o PC: outras teclas NAO cancelam. O texto cai onde o cursor
 # estiver na hora em que voce para.
-# Formato: modificador(es) + tecla, ex. "win+j", "win+f12", "win+shift+j". Vazio ("") desliga.
+# Formato: modificador(es) + tecla, ex. "win+oem_102", "win+shift+z", "win+f12". Vazio ("") desliga.
+# "oem_102" = a tecla \ | ao lado do Z no teclado ABNT2; "oem_3" = a tecla ' " a esquerda do 1.
 # O programa registra no Windows: se a combinacao ja for de outro programa/do Windows, nao registra
-# e escreve o motivo no log. Win+J estava livre no Windows 11 do Juliano em 24/10/2026.
-# Evite: Win+H (ditado do Windows), Win+Alt+* (Game Bar), Win+Shift+S (recorte), Win+Ctrl (Wispr).
-atalho = "win+j"
+# e escreve o motivo no log. Em 24/10/2026 (Windows 11 do Juliano) estavam livres e fora da lista
+# oficial de atalhos: Win+\ (ao lado do Z), Win+' , Win+Shift+Z/X/Q/E/D. Reserva: "win+shift+z".
+# Evite: Win+H (ditado do Windows), Win+Alt+* (Game Bar), Win+Shift+S (recorte), Win+Ctrl (Wispr),
+# Win+J (Recall no Windows 11 novo).
+atalho = "win+oem_102"
 teto_min = 30                   # para sozinho (bipe longo) depois desse tanto de minutos
 guardar_ultimas = 20            # gravacoes (wav + txt) guardadas; as mais velhas sao apagadas
 pasta_gravacoes = ""            # vazio = D:\Claudinho\ditado\gravacoes (pasta do programa)

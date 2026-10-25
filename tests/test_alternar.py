@@ -92,6 +92,7 @@ def test_ler_atalho():
             continue
         raise AssertionError(f"devia recusar {ruim!r}")
     assert ditado.nome_bonito("win+j") == "Win+J"
+    assert ditado.ler_atalho("win+oem_102")[:2] == (0x8, 0xE2)
 
 
 def test_wav_escrito_durante_a_gravacao():
@@ -206,13 +207,13 @@ def test_registerhotkey_dispara_e_detecta_colisao():
     if sys.platform != "win32":
         return
     chamou = threading.Event()
-    a = ditado.AtalhoGlobal("win+j", chamou.set)
+    a = ditado.AtalhoGlobal("win+oem_102", chamou.set)
     if not a.iniciar() and "1459" in a.erro:  # SSH/servico: sem area de trabalho interativa
         print("pulado: RegisterHotKey precisa da sessao do usuario (erro 1459)")
         return
     assert a.ok, a.erro
     try:
-        b = ditado.AtalhoGlobal("win+j", lambda: None)
+        b = ditado.AtalhoGlobal("win+oem_102", lambda: None)
         assert not b.iniciar() and "1409" in b.erro, b.erro   # colisao detectada
         ctypes.windll.user32.PostThreadMessageW(a._tid, a.WM_HOTKEY, 1, 0)
         assert chamou.wait(3)

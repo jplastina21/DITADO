@@ -1,7 +1,7 @@
 # ditado
 
 Ditado por voz **local** para Windows: segure uma tecla, fale, solte — o texto cai onde o cursor
-estiver. Para fala longa (10 min ou mais) tem um segundo atalho, **Win+J**, que liga e desliga. A transcrição roda na placa de vídeo (Whisper `large-v3-turbo` via faster-whisper);
+estiver. Para fala longa (10 min ou mais) tem um segundo atalho, **Win+\\** (a tecla ao lado do Z), que liga e desliga. A transcrição roda na placa de vídeo (Whisper `large-v3-turbo` via faster-whisper);
 nenhum áudio sai do computador e não há mensalidade. Feito como substituto do Wispr Flow, só
 para ditar.
 
@@ -18,12 +18,12 @@ para ditar.
 
 O que estava no seu Ctrl+C antes de ditar volta sozinho depois da colagem.
 
-### Fala longa: Win+J (aperta para começar, aperta de novo para parar)
+### Fala longa: Win+\\ ao lado do Z (aperta para começar, aperta de novo para parar)
 
-1. Aperte **Win+J** uma vez: bipe agudo, ícone **rosa** ("gravando (alternar)", com o tempo
+1. Aperte **Win+\\** (Win + a tecla `\ |` ao lado do Z) uma vez: bipe agudo, ícone **rosa** ("gravando (alternar)", com o tempo
    correndo). Pode soltar as teclas e falar à vontade.
 2. Enquanto fala, pode digitar, clicar, usar o PC: **outras teclas não cancelam nada**.
-3. Aperte **Win+J** de novo: bipe grave, o ícone fica laranja enquanto transcreve e o texto é
+3. Aperte **Win+\\** de novo: bipe grave, o ícone fica laranja enquanto transcreve e o texto é
    colado onde o cursor estiver **nessa hora**. 10 minutos de fala levam uns 17 s para transcrever.
 4. Teto de segurança: com 30 minutos ele para sozinho (bipe longo) e transcreve o que gravou.
 
@@ -35,13 +35,17 @@ no Ctrl+V para colar à mão. Guarda as últimas 20 gravações e apaga as mais 
 No menu do ícone: **Transcrever última gravação de novo** (transcreve o último wav de novo, salva
 o `.txt`, põe o texto no Ctrl+V e abre o `.txt`) e **Abrir pasta de gravações**.
 
-Por que Win+J: o programa registra o atalho no próprio Windows (`RegisterHotKey`). Se a
-combinação já for do Windows ou de outro programa, o registro falha e o log diz isso — não tem
-colisão silenciosa. Em 24/10/2026, no Windows 11 (build 26300) do Juliano, Win+J estava livre
-(Win+H, Win+F, Win+D, Win+L, Win+O, Win+F1, Win+F11 e Win+1/0 estavam ocupados). Também não
-encosta nos atalhos do Wispr (todos com Ctrl+Win, Ctrl+Alt+Win, Shift+Alt+Z/X, Alt+M+Win).
-Enquanto o Ditado está aberto, Win+J é só dele (o Windows não repassa para outro app). Antes de
-colar, ele espera você soltar o Win (Win + Ctrl+V viraria o atalho do Wispr).
+Por que Win+\\ (a tecla `\ |` ao lado do Z, no teclado ABNT2): fica colada no Win esquerdo, dá
+para apertar com uma mão só. O programa registra o atalho no próprio Windows (`RegisterHotKey`);
+se a combinação já for do Windows ou de outro programa, o registro falha e o log diz isso — não
+tem colisão silenciosa. Em 24/10/2026, no Windows 11 (build 26300, layout Português Brasil ABNT)
+do Juliano: **livres** Win+\\, Win+' (esquerda do 1), Win+Shift+Z/X/Q/E/D, Win+J, Win+F12;
+**ocupados** Win+Shift+A/W/S/R/C, Win+H/F/D/L/O/F1/F11/1/0. Além do registro, conferido contra a
+lista oficial de atalhos do Windows 11: Win+\\ não aparece nela (Win+J aparece: abre o Recall nos
+PCs que têm). Também não encosta nos atalhos do Wispr (Ctrl+Win, Ctrl+Espaço+Win, Ctrl+Alt+Win,
+Shift+Alt+Z/X, Alt+M+Win). Enquanto o Ditado está aberto, a combinação é só dele. Antes de colar,
+ele espera você soltar o Win (Win + Ctrl+V viraria o atalho do Wispr). Teclado sem a tecla ao lado
+do Z (padrão americano)? Use `atalho = "win+shift+z"`.
 
 ## Instalar do zero
 
@@ -65,7 +69,7 @@ mostra o tempo e a VRAM. Teste do clipboard: `venv\Scripts\python tests\test_col
 
 Depois de mudar, feche (Sair) e abra de novo.
 
-- **Fala longa (`[alternar]`):** `atalho = "win+j"` (ex. `"win+f12"`, `"win+shift+j"`; `""`
+- **Fala longa (`[alternar]`):** `atalho = "win+oem_102"` (`oem_102` = tecla ao lado do Z; ex. `"win+shift+z"`, `"win+f12"`; `""`
   desliga), `teto_min = 30`, `guardar_ultimas = 20`, `pasta_gravacoes = ""` (vazio = `gravacoes\`
   na pasta do programa). Se o atalho não registrar, o menu do ícone mostra "NAO registrou" e o
   log diz por quê.
