@@ -248,6 +248,21 @@ REPOS = {  # nome -> repositorio no Hugging Face (o mesmo mapa do faster-whisper
 PADROES_ARQUIVOS = ["config.json", "preprocessor_config.json", "model.bin", "tokenizer.json", "vocabulary.*"]
 
 
+def _sem_atalhos(caminho: str) -> str:
+    """Troca os symlinks do cache do Hugging Face por copias de verdade.
+
+    No Windows o huggingface_hub cria o snapshot com symlinks e o ctranslate2 nao abre o
+    model.bin por eles ("Unable to open file 'model.bin'"). Aconteceu no PC da clinica em 26/10/2026.
+    """
+    import shutil
+    for f in Path(caminho).iterdir():
+        if f.is_symlink():
+            alvo = f.resolve()
+            f.unlink()
+            shutil.copyfile(alvo, f)
+    return caminho
+
+
 def caminho_modelo(nome: str, pasta: Path, aviso=lambda *_: None) -> str:
     """Pasta local do modelo; baixa na primeira vez (com aviso de progresso). Aceita caminho de pasta."""
     if os.path.isdir(nome):
@@ -256,7 +271,7 @@ def caminho_modelo(nome: str, pasta: Path, aviso=lambda *_: None) -> str:
     repo = REPOS.get(nome) or (nome if "/" in nome else f"Systran/faster-whisper-{nome}")
     cache = str(pasta / "whisper")
     try:
-        return snapshot_download(repo, allow_patterns=PADROES_ARQUIVOS, cache_dir=cache, local_files_only=True)
+        return _sem_atalhos(snapshot_download(repo, allow_patterns=PADROES_ARQUIVOS, cache_dir=cache, local_files_only=True))
     except Exception:  # noqa: BLE001  (nao esta em disco ainda)
         pass
     from tqdm.auto import tqdm
@@ -277,7 +292,7 @@ def caminho_modelo(nome: str, pasta: Path, aviso=lambda *_: None) -> str:
     aviso("baixando", f"modelo {nome}")
     caminho = snapshot_download(repo, allow_patterns=PADROES_ARQUIVOS, cache_dir=cache, tqdm_class=Barra)
     log.info("modelo %s baixado", nome)
-    return caminho
+    return _sem_atalhos(caminho)
 
 
 class Motor:
